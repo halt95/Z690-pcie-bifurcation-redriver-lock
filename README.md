@@ -1,4 +1,4 @@
-# z690-pcie-bifurcation-cap
+# Z690 PCIe bifurcation redriver lock
 
 Pinning a PCIe link to Gen 4 on an ASUS Z690 board whose bifurcated x8/x8 slot
 feeds a Gen 4 redriver. The board trains the link at Gen 5 no matter what the
