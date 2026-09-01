@@ -20,7 +20,7 @@ should carry over to any Linux host with `setpci`, not just Unraid.
 | Redriver | C-Payne SlimSAS PCIe Gen 4 x8x8 host adapter (TI DS160PR810 redriver chips, rated to 16 GT/s) |
 | GPUs | 2x NVIDIA RTX 5060 Ti 16 GB (PCIe Gen 5 devices), one on each x8 leg of the redriver |
 | Hypervisor | Unraid, GPU passed through with VFIO to a Linux VM |
-| BIOS / Unraid version | *(fill in)* |
+| BIOS / Unraid version | v3811 / 7.2.4 |
 
 The same slot has since carried other cards behind the same redriver; the
 behaviour is a property of the board plus redriver, not of the card.
