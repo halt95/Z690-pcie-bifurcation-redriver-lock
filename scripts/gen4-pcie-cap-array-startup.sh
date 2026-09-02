@@ -13,8 +13,8 @@
 # a Function Level Reset on the uncapped link and it retrains at Gen 5.
 #
 # ---- EDIT THESE FOR YOUR HOST -------------------------------------------
-# One "endpoint:rootport" pair per GPU behind the redriver. Space separated.
-LINKS="${LINKS:-01:00.0:00:01.0 02:00.0:00:01.1}"
+# One "endpoint=rootport" pair per GPU behind the redriver. Space separated.
+LINKS="${LINKS:-01:00.0=00:01.0 02:00.0=00:01.1}"
 TARGET_GEN="${TARGET_GEN:-4}"       # 1..5; LnkCtl2 target link speed
 VM_NAME="${VM_NAME:-myvm}"          # libvirt name of the VM that owns the GPUs
 # -------------------------------------------------------------------------
@@ -25,7 +25,7 @@ LOG_TAG="[gen4-cap-array]"
 echo "$LOG_TAG $(date) Starting"
 
 for pair in $LINKS; do
-    for bdf in "${pair%:*:*}" "${pair#*:*:}"; do
+    for bdf in "${pair%=*}" "${pair#*=}"; do
         if ! lspci -s "$bdf" >/dev/null 2>&1; then
             echo "$LOG_TAG ERROR: PCIe device $bdf not found - aborting"
             exit 1
@@ -37,17 +37,17 @@ printf -v TARGET_WORD '%04x' "$TARGET_GEN"
 
 # Defensive re-cap (no-op if the bootup script already applied it)
 for pair in $LINKS; do
-    ep="${pair%:*:*}"; rp="${pair#*:*:}"
+    ep="${pair%=*}"; rp="${pair#*=}"
     echo "$LOG_TAG Re-applying cap on $ep <- $rp (Gen $TARGET_GEN)..."
-    setpci -s "$ep" CAP_EXP+30.w="$TARGET_WORD"
-    setpci -s "$rp" CAP_EXP+30.w="$TARGET_WORD"
+    setpci -s "$ep" CAP_EXP+30.w="$TARGET_WORD:000f"
+    setpci -s "$rp" CAP_EXP+30.w="$TARGET_WORD:000f"
     setpci -s "$rp" CAP_EXP+10.w=20:20
 done
 
 sleep 1
 
 for pair in $LINKS; do
-    rp="${pair#*:*:}"
+    rp="${pair#*=}"
     echo "$LOG_TAG Link $rp before VM start:"
     lspci -vvs "$rp" 2>/dev/null | grep -E "LnkSta:" | sed "s/^/$LOG_TAG   /" || true
 done

@@ -17,8 +17,8 @@
 # ---- EDIT THESE FOR YOUR HOST -------------------------------------------
 # Find them with:  lspci -nn | grep -i nvidia     (endpoint BDFs)
 #                  lspci -t                       (root port each endpoint hangs off)
-# One "endpoint:rootport" pair per GPU behind the redriver. Space separated.
-LINKS="${LINKS:-01:00.0:00:01.0 02:00.0:00:01.1}"
+# One "endpoint=rootport" pair per GPU behind the redriver. Space separated.
+LINKS="${LINKS:-01:00.0=00:01.0 02:00.0=00:01.1}"
 TARGET_GEN="${TARGET_GEN:-4}"       # 1..5; LnkCtl2 target link speed
 # -------------------------------------------------------------------------
 
@@ -29,7 +29,7 @@ echo "$LOG_TAG $(date) Starting"
 echo "$LOG_TAG Uptime: $(uptime -p)"
 
 for pair in $LINKS; do
-    for bdf in "${pair%:*:*}" "${pair#*:*:}"; do
+    for bdf in "${pair%=*}" "${pair#*=}"; do
         if ! lspci -s "$bdf" >/dev/null 2>&1; then
             echo "$LOG_TAG ERROR: PCIe device $bdf not found - aborting"
             exit 1
@@ -39,16 +39,17 @@ done
 
 printf -v TARGET_WORD '%04x' "$TARGET_GEN"
 
-# CAP_EXP+30 = Link Control 2; low nibble = target link speed (1=2.5GT/s .. 5=32GT/s)
+# CAP_EXP+30 = Link Control 2; low nibble = target link speed (1=2.5GT/s .. 5=32GT/s).
+# Written with mask 000f so the other LnkCtl2 bits are left untouched.
 # CAP_EXP+10 = Link Control;  bit 5 = Retrain Link
 for pair in $LINKS; do
-    ep="${pair%:*:*}"; rp="${pair#*:*:}"
+    ep="${pair%=*}"; rp="${pair#*=}"
     echo "$LOG_TAG Pre-cap link $ep <- $rp:"
     lspci -vvs "$rp" 2>/dev/null | grep -E "LnkCap:|LnkSta:" | sed "s/^/$LOG_TAG   /" || true
     echo "$LOG_TAG Capping endpoint $ep LnkCtl2 -> Gen $TARGET_GEN..."
-    setpci -s "$ep" CAP_EXP+30.w="$TARGET_WORD"
+    setpci -s "$ep" CAP_EXP+30.w="$TARGET_WORD:000f"
     echo "$LOG_TAG Capping root port $rp LnkCtl2 -> Gen $TARGET_GEN..."
-    setpci -s "$rp" CAP_EXP+30.w="$TARGET_WORD"
+    setpci -s "$rp" CAP_EXP+30.w="$TARGET_WORD:000f"
     echo "$LOG_TAG Retraining root port $rp..."
     setpci -s "$rp" CAP_EXP+10.w=20:20
 done
@@ -56,7 +57,7 @@ done
 sleep 1
 
 for pair in $LINKS; do
-    rp="${pair#*:*:}"
+    rp="${pair#*=}"
     echo "$LOG_TAG Post-cap link $rp:"
     lspci -vvs "$rp" 2>/dev/null | grep -E "LnkCap:|LnkSta:" | sed "s/^/$LOG_TAG   /" || true
 done
