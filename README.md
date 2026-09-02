@@ -35,6 +35,16 @@ behaviour is a property of the board plus redriver, not of the card.
   link dies, the card disappears from the bus (Xid 79 class) and the VFIO
   guest hangs.
 
+### Quick check
+
+```
+nvidia-smi -q | grep -A3 Replay        # in the guest, after a few minutes of load
+lspci -vvs <root port> | grep LnkSta   # on the host
+```
+
+A replay counter that keeps climbing, or `LnkSta: Speed 32GT/s` on a slot that
+carries a Gen 4 redriver, means you are affected.
+
 ## What does not work
 
 - **BIOS `Max Link Speed = Gen 4`** under System Agent Configuration. The
@@ -56,13 +66,17 @@ behaviour is a property of the board plus redriver, not of the card.
 
    ```
    # repeat for every GPU behind the redriver (endpoint, then its root port)
-   setpci -s 01:00.0 CAP_EXP+30.w=0004   # GPU 1 endpoint  LnkCtl2 target = Gen 4
-   setpci -s 00:01.0 CAP_EXP+30.w=0004   # GPU 1 root port LnkCtl2 target = Gen 4
-   setpci -s 00:01.0 CAP_EXP+10.w=20:20  # retrain
-   setpci -s 02:00.0 CAP_EXP+30.w=0004   # GPU 2 endpoint
-   setpci -s 00:01.1 CAP_EXP+30.w=0004   # GPU 2 root port
-   setpci -s 00:01.1 CAP_EXP+10.w=20:20  # retrain
+   setpci -s 01:00.0 CAP_EXP+30.w=0004:000f   # GPU 1 endpoint  LnkCtl2 target = Gen 4
+   setpci -s 00:01.0 CAP_EXP+30.w=0004:000f   # GPU 1 root port LnkCtl2 target = Gen 4
+   setpci -s 00:01.0 CAP_EXP+10.w=20:20       # retrain
+   setpci -s 02:00.0 CAP_EXP+30.w=0004:000f   # GPU 2 endpoint
+   setpci -s 00:01.1 CAP_EXP+30.w=0004:000f   # GPU 2 root port
+   setpci -s 00:01.1 CAP_EXP+10.w=20:20       # retrain
    ```
+
+   The `:000f` mask writes only the target-speed nibble of Link Control 2 and
+   leaves the register's other bits as the firmware set them. The original
+   recipe wrote the whole word (`=0004`); that also works.
 
 3. Start the VM **immediately**. No sleep in between; the VM start has to land
    inside the window before firmware rewrites the register.
@@ -82,11 +96,15 @@ Add New Script, paste the file, set the schedule). On disk they live at
 | `scripts/gen4-pcie-cap-bootup.sh` | At First Array Start Only | dual cap + retrain, no VM action |
 | `scripts/gen4-pcie-cap-array-startup.sh` | At Startup of Array | re-apply cap, then `virsh start` the VM |
 
+The cap block is repeated in both scripts on purpose: the User Scripts plugin
+runs each entry as a standalone file with its own schedule, and the second
+script has to be able to re-cap on its own when only the array restarts.
+
 Edit the block at the top of each script:
 
 | Variable | Meaning | How to find it |
 |---|---|---|
-| `LINKS` | space-separated `endpoint:rootport` pairs, one per GPU behind the redriver | endpoints: `lspci -nn \| grep -i nvidia`; root ports: `lspci -t` |
+| `LINKS` | space-separated `endpoint=rootport` pairs, one per GPU behind the redriver | endpoints: `lspci -nn \| grep -i nvidia`; root ports: `lspci -t` |
 | `TARGET_GEN` | target link speed, 4 for a Gen 4 redriver | redriver datasheet |
 | `VM_NAME` | libvirt name of the VM that owns the GPUs | `virsh list --all` |
 
@@ -141,7 +159,8 @@ under load.
   scripts on boards that expose a per-slot speed setting.
 - **2026-09-01** — Repo created. Both User Scripts normalised (edit-me block at
   the top, a `LINKS` list of endpoint/root-port pairs so every GPU behind the
-  redriver is capped, target speed and VM name as variables),
+  redriver is capped, target speed and VM name as variables, masked LnkCtl2
+  write),
   `check-link.sh` added, and the hard-shutdown requirement written down.
 
 ## Why it happens (best current understanding)
